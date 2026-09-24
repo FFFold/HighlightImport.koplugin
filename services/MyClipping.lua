@@ -95,12 +95,83 @@ function MyClipping:parseFile(file_path, book_filter)
     if file then
         local content = file:read("*a")
         file:close()
-        if not self:parseNewFormat(content, clippings, book_filter) then
+        if not self:parseBooxFormat(content, clippings, book_filter)
+                and not self:parseNewFormat(content, clippings, book_filter) then
             self:parseOldFormat(content, clippings, book_filter)
         end
         content = nil  -- allow GC of the large string
     end
     return clippings
+end
+
+-- Boox (Chinese UI) "读书笔记" export format:
+--   读书笔记 | <<Title>>Author1,Author2
+--   [Chapter]
+--   YYYY-MM-DD HH:MM  |  页码：N
+--   highlight text lines
+--   【批注】note first line
+--   note continuation lines
+--   -------------------
+function MyClipping:parseBooxFormat(content, clippings, book_filter)
+    -- The header is mandatory and unique to this format.
+    local header = content:match("^([^\r\n]*)") or ""
+    local title, author = header:match("^%s*读书笔记%s*|%s*<<(.-)>>%s*(.-)%s*$")
+    if not title or title == "" then
+        return false
+    end
+
+    local skip_book = book_filter and book_filter ~= "" and bare(title) ~= book_filter
+    if not skip_book then
+        clippings[title] = clippings[title] or {
+            title = title,
+            author = (author ~= nil and author ~= "") and author or _("Unknown Author"),
+        }
+    end
+
+    local chapter = nil
+    local current = nil
+
+    local function flush()
+        if current and current.text ~= "" and not skip_book then
+            table.insert(clippings[title], { current })
+        end
+        current = nil
+    end
+
+    local is_header = true
+    for line in content:gmatch("[^\r\n]+") do
+        if is_header then
+            is_header = false
+        else
+            local s = self:getText(line)
+            if s:match("^%-%-%-+$") then
+                flush()
+            elseif s:match("^【批注】") then
+                if current then
+                    current.note = s:match("^【批注】%s*(.-)%s*$") or ""
+                end
+            elseif current and current.note ~= nil then
+                current.note = (current.note == "") and s or (current.note .. "\n" .. s)
+            elseif current then
+                current.text = (current.text == "") and s or (current.text .. "\n" .. s)
+            else
+                local page = s:match("^%d%d%d%d%-%d%d%-%d%d%s+%d%d:%d%d%s*|%s*页码：%s*(%d+)")
+                if page then
+                    current = {
+                        page = page,
+                        sort = "highlight",
+                        text = "",
+                        chapter = chapter,
+                    }
+                elseif s ~= "" then
+                    chapter = s
+                end
+            end
+        end
+    end
+    flush()
+
+    return true
 end
 
 function MyClipping:parseNewFormat(content, clippings, book_filter)
