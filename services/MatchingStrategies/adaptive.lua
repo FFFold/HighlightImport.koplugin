@@ -389,10 +389,13 @@ return function (instance)
         local xpointer_start = res[1].start
         local xpointer_end = res[1]["end"]
 
-        -- When the winning query was shortened (truncation/prefix/split-line),
-        -- try to recover the full annotation range before creating the
-        -- highlight. Rolling documents only: PDF positions are page numbers.
-        if not has_pages and query ~= target.annotation then
+        -- Try to recover the full annotation range before creating the
+        -- highlight. Endpoint.extend returns the pointers unchanged when the
+        -- matched range already covers the whole annotation, and it is what
+        -- fixes short multi-line clippings whose full query can never match
+        -- (the old `query ~= annotation` gate skipped those entirely).
+        -- Rolling documents only: PDF positions are page numbers.
+        if not has_pages then
             local ext_start, ext_end = Endpoint.extend(
                 instance.ui.document, xpointer_start, xpointer_end, target.annotation)
             if ext_start ~= xpointer_start or ext_end ~= xpointer_end then

@@ -77,14 +77,17 @@ Observed properties across 4 real exports / 2 books:
 - New testable module `services/MatchingStrategies/endpoint.lua`:
   - builds head/tail probes from the annotation (first/last line, 60-byte
     utf8-safe truncations, whitespace-stripped variants)
-  - searches candidates via `search:searchFromCurrent`
+  - searches candidates via `document:findAllText` (position-independent,
+    document-ordered; the endpoint never needs search context)
   - accepts the pair whose extracted span, with whitespace stripped, equals the
     whitespace-stripped annotation (covers paragraph-junction spaces); picks the
     pair closest to the original match when several verify
   - returns the original pointers unchanged when nothing verifies (no regression)
-- `adaptive.lua` calls it only when `query ~= target.annotation`, only for
-  rolling/CreDocument documents, before duplicate-xpointer bookkeeping so that
-  two different long annotations sharing a truncated prefix no longer collapse.
+- `adaptive.lua` calls it for every match on rolling/CreDocument documents,
+  before duplicate-xpointer bookkeeping so that two different long annotations
+  sharing a truncated prefix no longer collapse. `Endpoint.extend` returns the
+  original pointers unchanged whenever the matched range already covers the
+  annotation.
 - `exact_legacy` is untouched (it has no fallback chain to extend).
 
 ## Test strategy
