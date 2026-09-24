@@ -1,5 +1,6 @@
 local MyClipping = require("clip")
 local Math = require("optmath")
+local DateTime = require("utils.DateTime")
 
 local _ = require("gettext")
 local logger = require("logger")
@@ -49,6 +50,10 @@ function Document:CreateHighlightFromXPointer(start_xp, end_xp, text, note_text)
     local annotation_item = {
         text = text,
         note = note_text and note_text ~= "" and note_text ~= text and note_text or nil,
+        -- Batch imports create many annotations within the same second; give
+        -- each one its own second so sync consumers that treat datetime as an
+        -- annotation identity (BookOrbit) do not collapse them into one entry.
+        datetime = DateTime.nextUnique(ui.annotation and ui.annotation.annotations),
         pos0 = start_xp,
         pos1 = end_xp,
         page = start_xp,  -- xPointer for EPUB rolling view

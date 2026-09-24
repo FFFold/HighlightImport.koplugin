@@ -10,6 +10,8 @@ local test_modules = {
     "tests.test_parse_boox",
     "tests.test_parse_clippings_notes",
     "tests.test_endpoint",
+    "tests.test_datetime",
+    "tests.test_create_highlight",
 }
 
 for _, name in ipairs(test_modules) do
