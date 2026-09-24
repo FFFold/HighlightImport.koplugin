@@ -54,6 +54,7 @@ return function (instance)
                             text  = entry[1].text,
                             page  = entry[1].page,
                             time  = entry[1].time,
+                            note  = entry[1].note,
                         }
                     end
                 end
@@ -91,7 +92,7 @@ return function (instance)
                 seen[item.text] = true
                 instance.targets[#instance.targets + 1] = {
                     annotation = item.text,
-                    note       = note_for_text[item.text],
+                    note       = item.note or note_for_text[item.text],
                     page       = item.page,
                     status     = ITargetStatus.ADDED,
                 }
@@ -147,6 +148,7 @@ return function (instance)
                         text = entry[1].text,
                         page = entry[1].page,
                         time = entry[1].time,
+                        note = entry[1].note,
                     }
                 end
             end
@@ -189,7 +191,7 @@ return function (instance)
             seen[item.text] = true
             instance.targets[#instance.targets + 1] = {
                 annotation = item.text,
-                note       = note_for_text[item.text],
+                note       = item.note or note_for_text[item.text],
                 page       = item.page,
                 status     = ITargetStatus.ADDED,
             }
