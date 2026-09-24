@@ -34,4 +34,16 @@ return function(H)
     local targets2 = ParseClippings(instance2)
     H.expect(#targets2, 1, "legacy: one target")
     H.expect(targets2[1] and targets2[1].note, "这条是笔记", "legacy: paired note still works")
+
+    -- manual book selection must carry the inline note too
+    local instance3 = {
+        parser = parser,
+        file_path = H.root .. "/tests/fixtures/boox_basic.txt",
+        targets = {},
+        manual_book = "测试之书",
+        ui = nil,
+    }
+    local targets3 = ParseClippings(instance3)
+    H.expect(#targets3, 2, "manual: two targets")
+    H.expect(targets3[1] and targets3[1].note, "这是第一条笔记\n笔记的续行内容", "manual: inline note bound")
 end

@@ -46,4 +46,33 @@ return function(H)
     H.expect(nb_entry and nb_entry.page, "7", "nbsp: page parsed")
     H.expect(nb_entry and nb_entry.text, "带 NBSP 的高亮内容。", "nbsp: text parsed")
     os.remove(tmp)
+
+    -- header-only file: recognised format, empty result, no fall-through to
+    -- the old parser (the header line must not become a book key)
+    local tmp2 = os.tmpname()
+    local fh2 = io.open(tmp2, "w")
+    fh2:write("读书笔记 | <<空书>>作者\n-------------------\n")
+    fh2:close()
+    local empty = parser:parseFile(tmp2, "")
+    H.ok(empty["空书"] ~= nil, "empty boox: header book key present")
+    H.expect(empty["空书"] and #empty["空书"], 0, "empty boox: no entries")
+    H.isNil(empty["读书笔记 | <<空书>>作者"], "empty boox: no fall-through to old parser")
+    os.remove(tmp2)
+
+    -- only lines beginning exactly with 【批注】 are notes; marker-like prose
+    -- (mid-line marker, other markers at line start) stays part of the text
+    local tmp3 = os.tmpname()
+    local fh3 = io.open(tmp3, "w")
+    fh3:write("读书笔记 | <<标记之书>>作者\n"
+        .. "2026-01-02 03:04  |  页码：3\n"
+        .. "正文里提到【批注】这两个字，但不在行首。\n"
+        .. "【注释】这是另一种标记，不算笔记。\n"
+        .. "【批注】真正的笔记\n"
+        .. "-------------------\n")
+    fh3:close()
+    local marked = parser:parseFile(tmp3, "")
+    local me = marked["标记之书"] and marked["标记之书"][1] and marked["标记之书"][1][1]
+    H.expect(me and me.text, "正文里提到【批注】这两个字，但不在行首。\n【注释】这是另一种标记，不算笔记。", "marker: prose stays text")
+    H.expect(me and me.note, "真正的笔记", "marker: only exact 批注 marker becomes note")
+    os.remove(tmp3)
 end
