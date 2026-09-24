@@ -88,4 +88,20 @@ return function(H)
     local s4, e4 = Endpoint.extend(doc4, y0, y1, doc_text4)
     H.expect(s4, y0, "extend: full coverage keeps start")
     H.expect(e4, y1, "extend: full coverage keeps end")
+
+    -- candidate collection is bounded even when the tail phrase occurs many
+    -- times (performance guard for whole-book imports)
+    local repeated = {}
+    for _ = 1, 400 do repeated[#repeated + 1] = "重复尾句" end
+    local doc_text5 = "唯一起点句。" .. table.concat(repeated) .. "结束。"
+    local doc5 = makeDoc(doc_text5)
+    local raw_get_page = doc5.getPageFromXPointer
+    doc5.get_page_calls = 0
+    doc5.getPageFromXPointer = function(self, xp)
+        self.get_page_calls = self.get_page_calls + 1
+        return raw_get_page(self, xp)
+    end
+    local t0, t1 = at(doc_text5, "重复尾句")
+    Endpoint.extend(doc5, t0, t1, "唯一起点句。\n重复尾句")
+    H.ok(doc5.get_page_calls < 150, "extend: candidate collection is bounded")
 end

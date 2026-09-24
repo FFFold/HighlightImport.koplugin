@@ -69,7 +69,8 @@ end
 
 function Endpoint.findCandidates(document, probe)
     local candidates = {}
-    local res = document:findAllText(probe, true, 5, 2048, false)
+    -- nb_context_words = 0: the endpoint never reads the context fields.
+    local res = document:findAllText(probe, true, 0, 2048, false)
     for _, r in ipairs(res or {}) do
         if r and r.start and r["end"] then
             candidates[#candidates + 1] = { start = r.start, ["end"] = r["end"] }
@@ -105,8 +106,9 @@ function Endpoint.extend(document, start_xp, end_xp, annotation)
                     local key = tostring(c.start) .. "|" .. tostring(c["end"])
                     if not seen[key] then
                         seen[key] = true
-                        if #out < Endpoint.MAX_CANDIDATES then
-                            out[#out + 1] = c
+                        out[#out + 1] = c
+                        if #out >= Endpoint.MAX_CANDIDATES then
+                            return out
                         end
                     end
                 end
