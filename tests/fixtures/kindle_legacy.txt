@@ -1,0 +1,10 @@
+测试之书 (测试作者)
+- Your Highlight on page 5 | Location 100-101 | Added on Monday, April 21, 2014 10:08:07 PM
+
+第一条英文高亮文本。
+==========
+测试之书 (测试作者)
+- Your Note on page 5 | Location 100 | Added on Monday, April 21, 2014 10:09:07 PM
+
+这条是笔记
+==========
