@@ -89,6 +89,17 @@ return function(H)
     H.expect(s4, y0, "extend: full coverage keeps start")
     H.expect(e4, y1, "extend: full coverage keeps end")
 
+    -- short first line (3 CJK chars = 9 bytes) must still be usable as a head
+    -- probe; real clippings start with lines like "讨厌。"
+    local doc_text6 = "开场。短句。这是一条比较长的后续内容，用于验证短探针。结尾。"
+    local h6, _ = at(doc_text6, "短句。")
+    local t6, t6e = at(doc_text6, "这是一条比较长的后续内容，用于验证短探针。")
+    local doc6 = makeDoc(doc_text6)
+    local ann6 = "短句。\n这是一条比较长的后续内容，用于验证短探针。"
+    local s6, e6 = Endpoint.extend(doc6, t6, t6e, ann6)
+    H.expect(s6, h6, "extend: short head line recovered")
+    H.expect(e6, t6e, "extend: short head case keeps tail end")
+
     -- candidate collection is bounded even when the tail phrase occurs many
     -- times (performance guard for whole-book imports)
     local repeated = {}

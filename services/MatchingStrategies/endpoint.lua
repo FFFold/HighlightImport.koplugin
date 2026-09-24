@@ -47,7 +47,10 @@ function Endpoint.buildProbes(annotation)
     local seen = { [heads] = {}, [tails] = {} }
     local function add(list, s)
         s = trim(s)
-        if #s < 12 or seen[list][s] then return end
+        -- Short lines (e.g. "讨厌。" = 9 bytes) are valid probes: the span
+        -- verification rejects wrong candidates, so a low minimum only costs
+        -- a few extra candidate lookups.
+        if #s < 6 or seen[list][s] then return end
         seen[list][s] = true
         list[#list + 1] = s
     end
