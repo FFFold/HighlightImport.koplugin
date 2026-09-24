@@ -5,6 +5,8 @@ Import your Kindle highlights from "My Clippings.txt" directly into KOReader.
 ## Features
 
 - Import highlights from Kindle's "My Clippings.txt" file
+- Import Boox (Chinese UI) "读书笔记" exports, including inline notes from 批注
+- Adaptive range extension: long or multi-paragraph highlights are highlighted in full when the endpoints can be located
 - Automatic text matching and highlight creation
 - Support for multi-line highlights
 

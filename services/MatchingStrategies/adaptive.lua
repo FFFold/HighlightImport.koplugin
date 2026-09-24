@@ -5,6 +5,7 @@ local UIManager = require("ui/uimanager")
 
 local useRecreateStatusPopup = require("composables.useRecreateStatusPopup")
 local Document = require("services.Document")
+local Endpoint = require("services.MatchingStrategies.endpoint")
 
 return function (instance)
 
@@ -48,23 +49,6 @@ return function (instance)
     for _ in pairs(existing) do n_existing = n_existing + 1 end
     log(string.format("Starting import. Targets: %d, Existing highlights: %d",
         #instance.targets, n_existing))
-
-    -- Truncate a string safely at a UTF-8 character boundary.
-    -- Lua's string.sub works on bytes, which can split multi-byte characters
-    -- (e.g. "á" = 2 bytes, "—" = 3 bytes), producing invalid UTF-8 that the
-    -- search engine silently fails to match.
-    local function utf8_sub(s, max_bytes)
-        if #s <= max_bytes then return s end
-        local i = max_bytes
-        -- Walk back until we are at the start of a UTF-8 character.
-        -- Continuation bytes have the form 10xxxxxx (0x80–0xBF).
-        while i > 0 and s:byte(i) >= 0x80 and s:byte(i) <= 0xBF do
-            i = i - 1
-        end
-        -- Also skip the leading byte of a multi-byte sequence if it would be orphaned.
-        if i > 0 and s:byte(i) >= 0x80 then i = i - 1 end
-        return s:sub(1, i)
-    end
 
     -- Normalize curly/smart typography to ASCII equivalents.
     -- Used as a fallback when the exact text fails to match, which happens when
@@ -152,9 +136,9 @@ return function (instance)
         end
 
         -- Truncate very long highlights to avoid search engine memory pressure.
-        -- Use utf8_sub to avoid splitting multi-byte characters (á, ã, ê, —, etc.)
+        -- Use Endpoint.utf8Sub to avoid splitting multi-byte characters (á, ã, ê, —, etc.)
         -- which would produce invalid UTF-8 that the search engine silently rejects.
-        local query = utf8_sub(target.annotation, 150)
+        local query = Endpoint.utf8Sub(target.annotation, 150)
         log(string.format("[SEARCH p.%s] %s", tostring(target.page), query))
         local res = search:searchFromCurrent(query, 0, false, true)
 
@@ -174,7 +158,7 @@ return function (instance)
         if not res or #res == 0 then
             local base = query_norm  -- already normalized; same as query if no special chars
             for _, len in ipairs({ 80, 50 }) do
-                local prefix = utf8_sub(base, len)
+                local prefix = Endpoint.utf8Sub(base, len)
                 if #prefix < #base then
                     log(string.format("[RETRY prefix-%d]", len))
                     res = search:searchFromCurrent(prefix, 0, false, true)
@@ -193,13 +177,13 @@ return function (instance)
             local base = query_norm
             res = search:searchFromCurrent(base, 1, false, true)
             if not res or #res == 0 then
-                local p80 = utf8_sub(base, 80)
+                local p80 = Endpoint.utf8Sub(base, 80)
                 if #p80 < #base then
                     res = search:searchFromCurrent(p80, 1, false, true)
                 end
             end
             if not res or #res == 0 then
-                local p50 = utf8_sub(base, 50)
+                local p50 = Endpoint.utf8Sub(base, 50)
                 if #p50 < #base then
                     res = search:searchFromCurrent(p50, 1, false, true)
                 end
@@ -216,11 +200,11 @@ return function (instance)
                 log("[RETRY strip-dashes]")
                 res = search:searchFromCurrent(stripped, 0, false, true)
                 if not res or #res == 0 then
-                    local p80 = utf8_sub(stripped, 80)
+                    local p80 = Endpoint.utf8Sub(stripped, 80)
                     if #p80 < #stripped then res = search:searchFromCurrent(p80, 0, false, true) end
                 end
                 if not res or #res == 0 then
-                    local p50 = utf8_sub(stripped, 50)
+                    local p50 = Endpoint.utf8Sub(stripped, 50)
                     if #p50 < #stripped then res = search:searchFromCurrent(p50, 0, false, true) end
                 end
                 -- Also try backward
@@ -247,14 +231,14 @@ return function (instance)
                 local after_raw = query:sub(raw_dash_pos + 3):match("^%s*(.-)%s*$")
                 for _, probe in ipairs({ with_dash, after_raw }) do
                     if probe and #probe >= 10 and (not res or #res == 0) then
-                        log(string.format("[RETRY around-dash] %s", utf8_sub(probe, 60)))
+                        log(string.format("[RETRY around-dash] %s", Endpoint.utf8Sub(probe, 60)))
                         res = search:searchFromCurrent(probe, 0, false, true)
                         if not res or #res == 0 then
                             res = search:searchFromCurrent(probe, 1, false, true)
                         end
                         -- also try shorter prefix of this probe
                         if not res or #res == 0 then
-                            local p80 = utf8_sub(probe, 80)
+                            local p80 = Endpoint.utf8Sub(probe, 80)
                             if #p80 < #probe then
                                 res = search:searchFromCurrent(p80, 0, false, true)
                                 if not res or #res == 0 then
@@ -274,7 +258,7 @@ return function (instance)
                     local after_dash_norm = query_norm:sub(dash_start + 3):match("^%s*(.-)%s*$")
                     for _, probe in ipairs({ with_dash_norm, after_dash_norm }) do
                         if probe and #probe >= 10 and (not res or #res == 0) then
-                            log(string.format("[RETRY norm-dash] %s", utf8_sub(probe, 60)))
+                            log(string.format("[RETRY norm-dash] %s", Endpoint.utf8Sub(probe, 60)))
                             res = search:searchFromCurrent(probe, 0, false, true)
                             if not res or #res == 0 then
                                 res = search:searchFromCurrent(probe, 1, false, true)
@@ -304,14 +288,14 @@ return function (instance)
             for _, ln in ipairs(lines_list) do
                 if not res or #res == 0 then
                     local ln_norm = normalize_typography(ln)
-                    log(string.format("[RETRY newline-split] %s", utf8_sub(ln_norm, 60)))
+                    log(string.format("[RETRY newline-split] %s", Endpoint.utf8Sub(ln_norm, 60)))
                     res = search:searchFromCurrent(ln_norm, 0, false, true)
                     if not res or #res == 0 then
                         res = search:searchFromCurrent(ln_norm, 1, false, true)
                     end
                     -- also try shorter prefixes of this line
                     if not res or #res == 0 then
-                        local p80 = utf8_sub(ln_norm, 80)
+                        local p80 = Endpoint.utf8Sub(ln_norm, 80)
                         if #p80 < #ln_norm then
                             res = search:searchFromCurrent(p80, 0, false, true)
                             if not res or #res == 0 then
@@ -320,7 +304,7 @@ return function (instance)
                         end
                     end
                     if not res or #res == 0 then
-                        local p50 = utf8_sub(ln_norm, 50)
+                        local p50 = Endpoint.utf8Sub(ln_norm, 50)
                         if #p50 < #ln_norm then
                             res = search:searchFromCurrent(p50, 0, false, true)
                             if not res or #res == 0 then
@@ -358,7 +342,7 @@ return function (instance)
                 first_sentence = first_sentence:match("^%s*(.-)%s*$") or first_sentence
             end
             -- Fallback: take the first 40 UTF-8-safe bytes as the prefix
-            local short_prefix = utf8_sub(query_norm, 40)
+            local short_prefix = Endpoint.utf8Sub(query_norm, 40)
             -- Use the shorter of the two as long as it's meaningful (≥ 10 chars)
             for _, probe in ipairs({ first_sentence, short_prefix }) do
                 if probe and #probe >= 10 and (not res or #res == 0) then
@@ -384,11 +368,11 @@ return function (instance)
                     log("[RETRY no-outer-quote]")
                     res = search:searchFromCurrent(inner, 0, false, true)
                     if not res or #res == 0 then
-                        local p80 = utf8_sub(inner, 80)
+                        local p80 = Endpoint.utf8Sub(inner, 80)
                         if #p80 < #inner then res = search:searchFromCurrent(p80, 0, false, true) end
                     end
                     if not res or #res == 0 then
-                        local p50 = utf8_sub(inner, 50)
+                        local p50 = Endpoint.utf8Sub(inner, 50)
                         if #p50 < #inner then res = search:searchFromCurrent(p50, 0, false, true) end
                     end
                 end
@@ -404,6 +388,19 @@ return function (instance)
 
         local xpointer_start = res[1].start
         local xpointer_end = res[1]["end"]
+
+        -- When the winning query was shortened (truncation/prefix/split-line),
+        -- try to recover the full annotation range before creating the
+        -- highlight. Rolling documents only: PDF positions are page numbers.
+        if not has_pages and query ~= target.annotation then
+            local ext_start, ext_end = Endpoint.extend(
+                instance.ui.document, xpointer_start, xpointer_end, target.annotation)
+            if ext_start ~= xpointer_start or ext_end ~= xpointer_end then
+                log(string.format("[EXTEND] %s → %s", tostring(ext_start), tostring(ext_end)))
+                xpointer_start, xpointer_end = ext_start, ext_end
+            end
+        end
+
         local xp_key = xpointer_start .. "|" .. xpointer_end
 
         -- Skip if a previous (longer) annotation already claimed this exact location
