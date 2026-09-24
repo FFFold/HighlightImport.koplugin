@@ -29,4 +29,21 @@ return function(H)
     H.ok(legacy["测试之书"] ~= nil, "legacy: book parsed")
     H.expect(legacy["测试之书"][1][1].sort, "highlight", "legacy: sort kept")
     H.expect(legacy["测试之书"][1][1].text, "第一条英文高亮文本。", "legacy: text kept")
+
+    -- Real Boox exports use U+00A0 (NBSP) around the header and date pipes;
+    -- Lua's %s does not match NBSP, so this must be normalised explicitly.
+    local tmp = os.tmpname()
+    local fh = io.open(tmp, "w")
+    fh:write("读书笔记\xc2\xa0|\xc2\xa0<<宽空格之书>>作者甲\n"
+        .. "2026-01-02 03:04\xc2\xa0|\xc2\xa0页码：7\n"
+        .. "带 NBSP 的高亮内容。\n"
+        .. "-------------------\n")
+    fh:close()
+    local nbsp = parser:parseFile(tmp, "")
+    H.ok(nbsp["宽空格之书"] ~= nil, "nbsp: header recognised")
+    H.expect(nbsp["宽空格之书"] and #nbsp["宽空格之书"], 1, "nbsp: entry parsed")
+    local nb_entry = nbsp["宽空格之书"] and nbsp["宽空格之书"][1] and nbsp["宽空格之书"][1][1]
+    H.expect(nb_entry and nb_entry.page, "7", "nbsp: page parsed")
+    H.expect(nb_entry and nb_entry.text, "带 NBSP 的高亮内容。", "nbsp: text parsed")
+    os.remove(tmp)
 end

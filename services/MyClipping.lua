@@ -113,8 +113,10 @@ end
 --   note continuation lines
 --   -------------------
 function MyClipping:parseBooxFormat(content, clippings, book_filter)
-    -- The header is mandatory and unique to this format.
+    -- The header is mandatory and unique to this format. Boox writes U+00A0
+    -- around the pipe; Lua's %s does not match it, so normalise it first.
     local header = content:match("^([^\r\n]*)") or ""
+    header = header:gsub("\xc2\xa0", " ")
     local title, author = header:match("^%s*读书笔记%s*|%s*<<(.-)>>%s*(.-)%s*$")
     if not title or title == "" then
         return false
