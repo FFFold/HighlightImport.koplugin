@@ -150,43 +150,64 @@ return function (instance)
             res = search:searchFromCurrent(query_norm, 0, false, true)
         end
 
+        -- The exact query stays in every later retry: the document may itself
+        -- contain the smart typography that normalize_typography rewrites (CJK
+        -- books use "……", curly quotes, ...), and once only the normalized form
+        -- is searched those retries can never match. The exact form also matters
+        -- for the backward direction, the only one that reaches text before the
+        -- reading cursor.
+        local query_variants = { query }
+        if query_norm ~= query then
+            query_variants[#query_variants + 1] = query_norm
+        end
+
+        -- Probes every variant of a generated needle until one hits.
+        local function probe_variants(make_probe, direction)
+            for _, variant in ipairs(query_variants) do
+                local probe = make_probe(variant)
+                if probe and #probe > 0 then
+                    local hit = search:searchFromCurrent(probe, direction, false, true)
+                    if hit and #hit > 0 then return hit end
+                end
+            end
+        end
+
         -- Fallback: progressive prefix shortening for edition differences.
         -- When mobi and EPUB have slightly different wording in the tail of a passage,
         -- a shorter prefix is more likely to match exactly.
-        -- We try 80 chars then 50 chars (using the normalized form as base).
+        -- We try 80 chars then 50 chars, for the exact and the normalized form.
         -- Only fires when the full-length attempts above all failed.
         if not res or #res == 0 then
-            local base = query_norm  -- already normalized; same as query if no special chars
             for _, len in ipairs({ 80, 50 }) do
-                local prefix = Endpoint.utf8Sub(base, len)
-                if #prefix < #base then
+                if not res or #res == 0 then
                     log(string.format("[RETRY prefix-%d]", len))
-                    res = search:searchFromCurrent(prefix, 0, false, true)
-                    if res and #res > 0 then break end
+                    res = probe_variants(function(base)
+                        local prefix = Endpoint.utf8Sub(base, len)
+                        return #prefix < #base and prefix or nil
+                    end, 0)
                 end
             end
         end
 
         -- Fallback: backward search (direction=1).
-        -- When the reading cursor is ahead of the target text, a forward search must
-        -- wrap all the way around the book, which can hit KOReader's internal iteration
-        -- limit on large EPUBs and give up before finding early content.
-        -- A backward search finds text *before* the cursor immediately, no wrap needed.
+        -- A forward search only covers text after the reading cursor, so a
+        -- highlight behind it can only be found backward. The exact query must
+        -- be tried here before its normalized form: the document may contain the
+        -- smart typography that normalization rewrites (e.g. "……").
         if not res or #res == 0 then
             log("[RETRY backward]")
-            local base = query_norm
-            res = search:searchFromCurrent(base, 1, false, true)
+            res = probe_variants(function(base) return base end, 1)
             if not res or #res == 0 then
-                local p80 = Endpoint.utf8Sub(base, 80)
-                if #p80 < #base then
-                    res = search:searchFromCurrent(p80, 1, false, true)
-                end
+                res = probe_variants(function(base)
+                    local p80 = Endpoint.utf8Sub(base, 80)
+                    return #p80 < #base and p80 or nil
+                end, 1)
             end
             if not res or #res == 0 then
-                local p50 = Endpoint.utf8Sub(base, 50)
-                if #p50 < #base then
-                    res = search:searchFromCurrent(p50, 1, false, true)
-                end
+                res = probe_variants(function(base)
+                    local p50 = Endpoint.utf8Sub(base, 50)
+                    return #p50 < #base and p50 or nil
+                end, 1)
             end
         end
 
@@ -195,21 +216,25 @@ return function (instance)
         -- (U+2014 + space). Some EPUB editions omit the dash entirely or use a
         -- different encoding, causing all dash-containing highlights to fail.
         if not res or #res == 0 then
-            local stripped = strip_dashes(query_norm)
-            if stripped ~= query_norm and #stripped >= 10 then
-                log("[RETRY strip-dashes]")
-                res = search:searchFromCurrent(stripped, 0, false, true)
+            for _, variant in ipairs(query_variants) do
                 if not res or #res == 0 then
-                    local p80 = Endpoint.utf8Sub(stripped, 80)
-                    if #p80 < #stripped then res = search:searchFromCurrent(p80, 0, false, true) end
-                end
-                if not res or #res == 0 then
-                    local p50 = Endpoint.utf8Sub(stripped, 50)
-                    if #p50 < #stripped then res = search:searchFromCurrent(p50, 0, false, true) end
-                end
-                -- Also try backward
-                if not res or #res == 0 then
-                    res = search:searchFromCurrent(stripped, 1, false, true)
+                    local stripped = strip_dashes(variant)
+                    if stripped ~= variant and #stripped >= 10 then
+                        log("[RETRY strip-dashes]")
+                        res = search:searchFromCurrent(stripped, 0, false, true)
+                        if not res or #res == 0 then
+                            local p80 = Endpoint.utf8Sub(stripped, 80)
+                            if #p80 < #stripped then res = search:searchFromCurrent(p80, 0, false, true) end
+                        end
+                        if not res or #res == 0 then
+                            local p50 = Endpoint.utf8Sub(stripped, 50)
+                            if #p50 < #stripped then res = search:searchFromCurrent(p50, 0, false, true) end
+                        end
+                        -- Also try backward
+                        if not res or #res == 0 then
+                            res = search:searchFromCurrent(stripped, 1, false, true)
+                        end
+                    end
                 end
             end
         end
@@ -286,39 +311,45 @@ return function (instance)
                 end
             end
             for _, ln in ipairs(lines_list) do
-                if not res or #res == 0 then
-                    local ln_norm = normalize_typography(ln)
-                    log(string.format("[RETRY newline-split] %s", Endpoint.utf8Sub(ln_norm, 60)))
-                    res = search:searchFromCurrent(ln_norm, 0, false, true)
+                local ln_variants = { ln }
+                local ln_norm = normalize_typography(ln)
+                if ln_norm ~= ln then
+                    ln_variants[#ln_variants + 1] = ln_norm
+                end
+                for _, ln_form in ipairs(ln_variants) do
                     if not res or #res == 0 then
-                        res = search:searchFromCurrent(ln_norm, 1, false, true)
-                    end
-                    -- also try shorter prefixes of this line
-                    if not res or #res == 0 then
-                        local p80 = Endpoint.utf8Sub(ln_norm, 80)
-                        if #p80 < #ln_norm then
-                            res = search:searchFromCurrent(p80, 0, false, true)
-                            if not res or #res == 0 then
-                                res = search:searchFromCurrent(p80, 1, false, true)
+                        log(string.format("[RETRY newline-split] %s", Endpoint.utf8Sub(ln_form, 60)))
+                        res = search:searchFromCurrent(ln_form, 0, false, true)
+                        if not res or #res == 0 then
+                            res = search:searchFromCurrent(ln_form, 1, false, true)
+                        end
+                        -- also try shorter prefixes of this line
+                        if not res or #res == 0 then
+                            local p80 = Endpoint.utf8Sub(ln_form, 80)
+                            if #p80 < #ln_form then
+                                res = search:searchFromCurrent(p80, 0, false, true)
+                                if not res or #res == 0 then
+                                    res = search:searchFromCurrent(p80, 1, false, true)
+                                end
                             end
                         end
-                    end
-                    if not res or #res == 0 then
-                        local p50 = Endpoint.utf8Sub(ln_norm, 50)
-                        if #p50 < #ln_norm then
-                            res = search:searchFromCurrent(p50, 0, false, true)
-                            if not res or #res == 0 then
-                                res = search:searchFromCurrent(p50, 1, false, true)
+                        if not res or #res == 0 then
+                            local p50 = Endpoint.utf8Sub(ln_form, 50)
+                            if #p50 < #ln_form then
+                                res = search:searchFromCurrent(p50, 0, false, true)
+                                if not res or #res == 0 then
+                                    res = search:searchFromCurrent(p50, 1, false, true)
+                                end
                             end
                         end
-                    end
-                    -- also try strip-dashes variant of this line
-                    if not res or #res == 0 then
-                        local ln_stripped = strip_dashes(ln_norm)
-                        if ln_stripped ~= ln_norm and #ln_stripped >= 10 then
-                            res = search:searchFromCurrent(ln_stripped, 0, false, true)
-                            if not res or #res == 0 then
-                                res = search:searchFromCurrent(ln_stripped, 1, false, true)
+                        -- also try strip-dashes variant of this line
+                        if not res or #res == 0 then
+                            local ln_stripped = strip_dashes(ln_form)
+                            if ln_stripped ~= ln_form and #ln_stripped >= 10 then
+                                res = search:searchFromCurrent(ln_stripped, 0, false, true)
+                                if not res or #res == 0 then
+                                    res = search:searchFromCurrent(ln_stripped, 1, false, true)
+                                end
                             end
                         end
                     end
@@ -334,18 +365,27 @@ return function (instance)
         -- works around this fundamental limitation.
         -- This fires regardless of whether dashes are involved.
         if not res or #res == 0 then
-            -- First try: everything before the first sentence-ending punctuation
-            -- followed by a space (captures "claro." from "claro. — Então...").
-            local first_sentence = query_norm:match("^(.+[%.!%?])[%s%-]") or
-                                   query_norm:match("^(.+[%.!%?])$")
-            if first_sentence then
-                first_sentence = first_sentence:match("^%s*(.-)%s*$") or first_sentence
+            -- Build the probes for the exact and the normalized form, exact
+            -- first. First probe: everything before the first sentence-ending
+            -- punctuation followed by a space (captures "claro." from
+            -- "claro. — Então..."). Second probe: the first 40 UTF-8-safe bytes.
+            local probes, seen_probes = {}, {}
+            for _, variant in ipairs(query_variants) do
+                local first_sentence = variant:match("^(.+[%.!%?])[%s%-]") or
+                                       variant:match("^(.+[%.!%?])$")
+                if first_sentence then
+                    first_sentence = first_sentence:match("^%s*(.-)%s*$") or first_sentence
+                end
+                for _, probe in ipairs({ first_sentence, Endpoint.utf8Sub(variant, 40) }) do
+                    -- Use the shorter of the two as long as it's meaningful (≥ 10 chars)
+                    if probe and #probe >= 10 and not seen_probes[probe] then
+                        seen_probes[probe] = true
+                        probes[#probes + 1] = probe
+                    end
+                end
             end
-            -- Fallback: take the first 40 UTF-8-safe bytes as the prefix
-            local short_prefix = Endpoint.utf8Sub(query_norm, 40)
-            -- Use the shorter of the two as long as it's meaningful (≥ 10 chars)
-            for _, probe in ipairs({ first_sentence, short_prefix }) do
-                if probe and #probe >= 10 and (not res or #res == 0) then
+            for _, probe in ipairs(probes) do
+                if not res or #res == 0 then
                     log(string.format("[RETRY short-prefix] %s", probe))
                     res = search:searchFromCurrent(probe, 0, false, true)
                     if not res or #res == 0 then

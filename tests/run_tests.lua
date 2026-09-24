@@ -12,6 +12,7 @@ local test_modules = {
     "tests.test_endpoint",
     "tests.test_datetime",
     "tests.test_create_highlight",
+    "tests.test_adaptive_ellipsis",
 }
 
 for _, name in ipairs(test_modules) do
